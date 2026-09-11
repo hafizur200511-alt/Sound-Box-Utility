@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Sound Box APK
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -23,36 +23,64 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Find Android project
+      - name: Extract Android project
+        shell: bash
         run: |
-          echo "Searching for Gradle project..."
+          set -e
 
-          PROJECT_DIR=$(find . -type f \( \
-            -name "settings.gradle.kts" -o \
-            -name "settings.gradle" \
-          \) -print -quit | xargs dirname)
+          ZIP_FILE="sound-box-utility.zip"
 
-          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
-            echo "Gradle project not found!"
-            find . -maxdepth 5 -type f | head -200
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: $ZIP_FILE not found."
+            echo "Files in repository:"
+            find . -maxdepth 3 -type f -print
             exit 1
           fi
 
-          echo "Project directory: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          rm -rf android-project
+          mkdir android-project
+
+          unzip -q "$ZIP_FILE" -d android-project
+
+          echo "=== Extracted project ==="
+          find android-project -maxdepth 2 -type f -print
+
+          if [ ! -f "android-project/settings.gradle.kts" ]; then
+            echo "ERROR: settings.gradle.kts not found after extraction."
+            exit 1
+          fi
+
+      - name: Create debug keystore
+        working-directory: android-project
+        shell: bash
+        run: |
+          set -e
+
+          keytool -genkeypair \
+            -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Build Debug APK
+        working-directory: android-project
         run: |
-          cd "$PROJECT_DIR"
           gradle assembleDebug --stacktrace
 
-      - name: Find APK
+      - name: Check APK
+        working-directory: android-project
         run: |
-          find . -type f -name "*.apk" -print
+          echo "=== APK files ==="
+          find app/build/outputs/apk -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: sound-box-apk
-          path: "**/app/build/outputs/apk/debug/*.apk"
+          name: sound-box-utility-debug-apk
+          path: android-project/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
