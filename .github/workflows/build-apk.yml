@@ -23,12 +23,36 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Find Android project
+        run: |
+          echo "Searching for Gradle project..."
+
+          PROJECT_DIR=$(find . -type f \( \
+            -name "settings.gradle.kts" -o \
+            -name "settings.gradle" \
+          \) -print -quit | xargs dirname)
+
+          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
+            echo "Gradle project not found!"
+            find . -maxdepth 5 -type f | head -200
+            exit 1
+          fi
+
+          echo "Project directory: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          cd "$PROJECT_DIR"
+          gradle assembleDebug --stacktrace
+
+      - name: Find APK
+        run: |
+          find . -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: sound-box-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: "**/app/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
